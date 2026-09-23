@@ -240,20 +240,12 @@
     <!-- Application Script -->
     <script>
         // --- DATA MANAGEMENT (LOCALSTORAGE) ---
-       // --- DATA MANAGEMENT (LOCALSTORAGE) ---
         const DEFAULT_SERVICES = [
             { id: 1, name: 'ดูดฝุ่น', price: 80 },
             { id: 2, name: 'ล้างภายนอก', price: 120 },
             { id: 3, name: 'ล้างภายใน', price: 150 },
             { id: 4, name: 'ล้างทั้งคัน', price: 250 }
         ];
-
-        // ระบบบังคับรีเซ็ตความจำเก่าอัตโนมัติเมื่อเปิดผ่าน GitHub
-        const APP_VERSION = "2.1";
-        if (localStorage.getItem("carwash_app_version") !== APP_VERSION) {
-            localStorage.clear();
-            localStorage.setItem("carwash_app_version", APP_VERSION);
-        }
 
         let targetRole = null;
         let currentRole = 'customer';
@@ -286,60 +278,283 @@
             renderCustomerServices();
         });
 
+        // --- ROLE & AUTHENTICATION ---
+        function switchRole(role) {
+            currentRole = role;
+            document.getElementById('view-customer').classList.add('hidden');
+            document.getElementById('view-staff').classList.add('hidden');
+            document.getElementById('view-admin').classList.add('hidden');
+
+            document.getElementById('role-buttons').classList.remove('hidden');
+            document.getElementById('logged-user-info').classList.add('hidden');
+
+            if (role === 'customer') {
+                document.getElementById('view-customer').classList.remove('hidden');
+                renderCustomerServices();
+            } else if (role === 'staff') {
+                document.getElementById('view-staff').classList.remove('hidden');
+                document.getElementById('role-buttons').classList.add('hidden');
+                document.getElementById('logged-user-info').classList.remove('hidden');
+                document.getElementById('role-badge').innerText = 'พนักงาน (A002)';
+                renderStaffQueue();
+            } else if (role === 'admin') {
+                document.getElementById('view-admin').classList.remove('hidden');
+                document.getElementById('role-buttons').classList.add('hidden');
+                document.getElementById('logged-user-info').classList.remove('hidden');
+                document.getElementById('role-badge').innerText = 'แอดมิน (A001)';
+                renderAdminView();
+            }
+        }
+
+        function openLoginModal(role) {
+            targetRole = role;
+            document.getElementById('login-id').value = '';
+            document.getElementById('login-pass').value = '';
+            document.getElementById('login-error').classList.add('hidden');
+            document.getElementById('modal-title').innerText = role === 'staff' ? 'เข้าสู่ระบบพนักงาน' : 'เข้าสู่ระบบแอดมิน';
+            document.getElementById('login-modal').classList.remove('hidden');
+        }
+
+        function closeLoginModal() {
+            document.getElementById('login-modal').classList.add('hidden');
+        }
+
+        function handleLogin(e) {
+            e.preventDefault();
+            const id = document.getElementById('login-id').value.trim();
+            const pass = document.getElementById('login-pass').value.trim();
+
+            if (targetRole === 'staff' && id === 'A002' && pass === '1234') {
+                closeLoginModal();
+                switchRole('staff');
+            } else if (targetRole === 'admin' && id === 'A001' && pass === '1234') {
+                closeLoginModal();
+                switchRole('admin');
+            } else {
+                document.getElementById('login-error').classList.remove('hidden');
+            }
+        }
+
+        function logout() {
+            switchRole('customer');
+        }
+
         // --- CUSTOMER LOGIC ---
         function renderCustomerServices() {
             const services = getServices();
             const container = document.getElementById('services-list-container');
-            
-            container.innerHTML = services.map(s => {
-                // ระบุว่าตัวไหนคือ "ล้างทั้งคัน" โดยเช็กจาก ID หรือชื่อ
-                const isAllWash = (s.id === 4 || s.name.includes('ล้างทั้งคัน'));
-                return `
-                <label class="flex items-center justify-between p-4 rounded-xl border border-slate-700 bg-slate-900/50 cursor-pointer hover:border-slate-600 transition">
+            container.innerHTML = services.map(s => `
+                <label class="flex items-center justify-between p-4 rounded-xl border border-slate-700 bg-slate-900/50 cursor-pointer hover:border-slate-600 transition" id="service-label-${s.id}">
                     <div class="flex items-center gap-3">
-                        <input type="checkbox" value="${s.id}" data-is-all="${isAllWash}" onchange="handleServiceChange(this)" class="service-checkbox w-4 h-4 rounded text-blue-600 focus:ring-0 bg-slate-800 border-slate-600">
+                        <input type="checkbox" value="${s.id}" data-price="${s.price}" onchange="handleServiceChange(this)" class="service-checkbox w-4 h-4 rounded text-blue-600 focus:ring-0 bg-slate-800 border-slate-600">
                         <span class="text-sm font-medium text-white">${s.name}</span>
                     </div>
                     <span class="text-sm font-bold text-blue-400">${s.price} ฿</span>
                 </label>
-                `;
-            }).join('');
+            `).join('');
         }
 
-        // ระบบตรวจสอบการเลือก (ทำงานด้วย data-is-all ไม่ขึ้นกับภาษา)
-        function handleServiceChange(changedInput) {
-            const checkboxes = document.querySelectorAll('.service-checkbox');
-            const isAllWash = changedInput.getAttribute('data-is-all') === 'true';
+        // Mutual Exclusion Logic (ล้างทั้งคัน vs บริการย่อย)
+        function handleServiceChange(element) {
+            const services = getServices();
+            const allWashService = services.find(s => s.name.trim() === 'ล้างทั้งคัน') || { id: 4 };
+            const allWashId = allWashService.id;
 
-            if (isAllWash && changedInput.checked) {
-                // ถ้าเลือก "ล้างทั้งคัน" -> ปิดตัวเลือกอื่นทั้งหมด
+            const isAllWash = parseInt(element.value) === allWashId;
+            const checkboxes = document.querySelectorAll('.service-checkbox');
+            const allWashCb = Array.from(checkboxes).find(cb => parseInt(cb.value) === allWashId);
+
+            if (isAllWash && element.checked) {
+                // เลือก "ล้างทั้งคัน" -> ยกเลิกและปิดการเลือกรายการอื่นทั้งหมด
                 checkboxes.forEach(cb => {
-                    if (cb !== changedInput) {
+                    if (parseInt(cb.value) !== allWashId) {
                         cb.checked = false;
                         cb.disabled = true;
-                        cb.closest('label')?.classList.add('opacity-40', 'cursor-not-allowed');
+                        document.getElementById(`service-label-${cb.value}`)?.classList.add('opacity-40', 'cursor-not-allowed');
                     }
                 });
-            } else if (isAllWash && !changedInput.checked) {
-                // ถ้ายกเลิก "ล้างทั้งคัน" -> เปิดตัวเลือกอื่นทั้งหมด
+            } else if (isAllWash && !element.checked) {
+                // ยกเลิก "ล้างทั้งคัน" -> ปลดล็อกรายการอื่นทั้งหมด
                 checkboxes.forEach(cb => {
                     cb.disabled = false;
-                    cb.closest('label')?.classList.remove('opacity-40', 'cursor-not-allowed');
+                    document.getElementById(`service-label-${cb.value}`)?.classList.remove('opacity-40', 'cursor-not-allowed');
                 });
             } else {
-                // ถ้าเลือก/ยกเลิก บริการย่อย
-                const allWashCb = Array.from(checkboxes).find(cb => cb.getAttribute('data-is-all') === 'true');
-                const anySubChecked = Array.from(checkboxes).some(cb => cb.getAttribute('data-is-all') !== 'true' && cb.checked);
-
+                // เลือก/ยกเลิก บริการย่อยอื่น ๆ
+                const anyOtherChecked = Array.from(checkboxes).some(cb => parseInt(cb.value) !== allWashId && cb.checked);
                 if (allWashCb) {
-                    allWashCb.disabled = anySubChecked;
-                    if (anySubChecked) {
-                        allWashCb.closest('label')?.classList.add('opacity-40', 'cursor-not-allowed');
+                    if (anyOtherChecked) {
+                        allWashCb.disabled = true;
+                        document.getElementById(`service-label-${allWashId}`)?.classList.add('opacity-40', 'cursor-not-allowed');
                     } else {
-                        allWashCb.closest('label')?.classList.remove('opacity-40', 'cursor-not-allowed');
+                        allWashCb.disabled = false;
+                        document.getElementById(`service-label-${allWashId}`)?.classList.remove('opacity-40', 'cursor-not-allowed');
                     }
                 }
             }
+        }
+
+        function handleBooking(e) {
+            e.preventDefault();
+            const checkboxes = document.querySelectorAll('.service-checkbox:checked');
+            if (checkboxes.length === 0) {
+                alert('กรุณาเลือกบริการอย่างน้อย 1 รายการ');
+                return;
+            }
+
+            const services = getServices();
+            let selectedServices = [];
+            let totalPrice = 0;
+
+            checkboxes.forEach(cb => {
+                const sId = parseInt(cb.value);
+                const service = services.find(s => s.id === sId);
+                if (service) {
+                    selectedServices.push(service.name);
+                    totalPrice += service.price;
+                }
+            });
+
+            const newBooking = {
+                id: Date.now(),
+                name: document.getElementById('cust-name').value,
+                phone: document.getElementById('cust-phone').value,
+                license: document.getElementById('cust-license').value,
+                date: document.getElementById('cust-date').value,
+                time: document.getElementById('cust-time').value,
+                services: selectedServices.join(', '),
+                totalPrice: totalPrice,
+                status: 'รอคิว'
+            };
+
+            const bookings = getBookings();
+            bookings.push(newBooking);
+            saveBookings(bookings);
+
+            alert('จองคิวเรียบร้อยแล้ว!');
+            document.getElementById('booking-form').reset();
+            renderCustomerServices();
+        }
+
+        function searchQueue() {
+            const query = document.getElementById('search-input').value.trim().toLowerCase();
+            const resultBox = document.getElementById('search-result');
+            if (!query) return;
+
+            const bookings = getBookings().filter(b => 
+                b.license.toLowerCase().includes(query) || b.phone.includes(query)
+            );
+
+            if (bookings.length === 0) {
+                resultBox.innerHTML = `<p class="text-xs text-slate-400">ไม่พบข้อมูลคิวรถ</p>`;
+            } else {
+                resultBox.innerHTML = bookings.map(b => `
+                    <div class="p-3 bg-slate-900 rounded-xl border border-slate-700">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="font-bold text-white text-sm">${b.license}</span>
+                            <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold ${getStatusBadgeClass(b.status)}">${b.status}</span>
+                        </div>
+                        <p class="text-xs text-slate-400">วันที่: ${b.date} (${b.time} น.)</p>
+                        <p class="text-xs text-slate-400">บริการ: ${b.services}</p>
+                    </div>
+                `).join('');
+            }
+            resultBox.classList.remove('hidden');
+        }
+
+        // --- STAFF LOGIC ---
+        function renderStaffQueue() {
+            const selectedDate = document.getElementById('staff-date-filter').value;
+            const bookings = getBookings().filter(b => b.date === selectedDate);
+
+            // Update Counts
+            document.getElementById('count-wait').innerText = bookings.filter(b => b.status === 'รอคิว').length;
+            document.getElementById('count-wash').innerText = bookings.filter(b => b.status === 'กำลังล้าง').length;
+            document.getElementById('count-done').innerText = bookings.filter(b => b.status === 'เสร็จแล้ว').length;
+
+            const table = document.getElementById('staff-queue-table');
+            if (bookings.length === 0) {
+                table.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-400 text-xs">ไม่มีรายการจองในวันที่เลือก</td></tr>`;
+                return;
+            }
+
+            table.innerHTML = bookings.map(b => `
+                <tr class="hover:bg-slate-700/30">
+                    <td class="p-4 font-semibold text-white">${b.time} น.</td>
+                    <td class="p-4 text-blue-400 font-bold">${b.license}</td>
+                    <td class="p-4">${b.name}<br><span class="text-xs text-slate-400">${b.phone}</span></td>
+                    <td class="p-4 text-xs text-slate-300">${b.services}</td>
+                    <td class="p-4"><span class="px-2.5 py-1 rounded-full text-xs font-semibold ${getStatusBadgeClass(b.status)}">${b.status}</span></td>
+                    <td class="p-4 text-center">
+                        <select onchange="updateBookingStatus(${b.id}, this.value)" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white">
+                            <option value="รอคิว" ${b.status === 'รอคิว' ? 'selected' : ''}>รอคิว</option>
+                            <option value="กำลังล้าง" ${b.status === 'กำลังล้าง' ? 'selected' : ''}>กำลังล้าง</option>
+                            <option value="เสร็จแล้ว" ${b.status === 'เสร็จแล้ว' ? 'selected' : ''}>เสร็จแล้ว</option>
+                        </select>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function updateBookingStatus(id, newStatus) {
+            const bookings = getBookings();
+            const index = bookings.findIndex(b => b.id === id);
+            if (index !== -1) {
+                bookings[index].status = newStatus;
+                saveBookings(bookings);
+                renderStaffQueue();
+            }
+        }
+
+        // --- ADMIN LOGIC ---
+        function renderAdminView() {
+            // Render Price Manager
+            const services = getServices();
+            document.getElementById('admin-services-list').innerHTML = services.map(s => `
+                <div class="flex justify-between items-center bg-slate-900 p-3 rounded-xl border border-slate-700">
+                    <span class="text-sm font-medium text-white">${s.name}</span>
+                    <div class="flex items-center gap-2">
+                        <input type="number" id="price-input-${s.id}" value="${s.price}" class="w-20 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-right text-white">
+                        <span class="text-xs text-slate-400">฿</span>
+                        <button onclick="savePrice(${s.id})" class="px-3 py-1 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-semibold text-white">บันทึก</button>
+                    </div>
+                </div>
+            `).join('');
+
+            // Render All Bookings
+            const bookings = getBookings();
+            document.getElementById('admin-bookings-table').innerHTML = bookings.map(b => `
+                <tr class="hover:bg-slate-700/30">
+                    <td class="p-3 text-xs">${b.date}<br><span class="text-slate-400">${b.time} น.</span></td>
+                    <td class="p-3 font-bold text-blue-400">${b.license}</td>
+                    <td class="p-3 text-xs">${b.name}<br><span class="text-slate-400">${b.phone}</span></td>
+                    <td class="p-3 text-xs text-slate-300">${b.services}</td>
+                    <td class="p-3 font-semibold text-white">${b.totalPrice} ฿</td>
+                    <td class="p-3"><span class="px-2 py-0.5 rounded-full text-xs ${getStatusBadgeClass(b.status)}">${b.status}</span></td>
+                </tr>
+            `).join('');
+        }
+
+        function savePrice(serviceId) {
+            const newPrice = parseFloat(document.getElementById(`price-input-${serviceId}`).value);
+            if (isNaN(newPrice) || newPrice < 0) return;
+
+            const services = getServices();
+            const index = services.findIndex(s => s.id === serviceId);
+            if (index !== -1) {
+                services[index].price = newPrice;
+                saveServices(services);
+                alert('อัปเดตราคาสำเร็จ!');
+                renderAdminView();
+            }
+        }
+
+        // --- HELPERS ---
+        function getStatusBadgeClass(status) {
+            if (status === 'รอคิว') return 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30';
+            if (status === 'กำลังล้าง') return 'bg-blue-500/20 text-blue-400 border border-blue-500/30';
+            if (status === 'เสร็จแล้ว') return 'bg-green-500/20 text-green-400 border border-green-500/30';
+            return 'bg-slate-700 text-slate-300';
         }
     </script>
 </body>
