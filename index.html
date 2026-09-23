@@ -57,18 +57,18 @@
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-xs font-semibold text-slate-400 mb-2">ชื่อ-นามสกุล *</label>
-                                <input type="text" id="cust-name" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 text-sm">
+                                <input type="text" id="cust-name" autocomplete="off" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 text-sm">
                             </div>
                             <div>
                                 <label class="block text-xs font-semibold text-slate-400 mb-2">เบอร์โทรศัพท์ *</label>
-                                <input type="tel" id="cust-phone" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 text-sm">
+                                <input type="tel" id="cust-phone" autocomplete="off" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 text-sm">
                             </div>
                         </div>
 
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div>
                                 <label class="block text-xs font-semibold text-slate-400 mb-2">ทะเบียนรถ *</label>
-                                <input type="text" id="cust-license" placeholder="เช่น กข 1234" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 text-sm">
+                                <input type="text" id="cust-license" autocomplete="off" placeholder="เช่น กข 1234" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 text-sm">
                             </div>
                             <div>
                                 <label class="block text-xs font-semibold text-slate-400 mb-2">วันที่รับบริการ *</label>
@@ -110,7 +110,7 @@
                             <i class="fa-solid fa-magnifying-glass text-blue-400"></i> เช็กสถานะการล้างรถ
                         </h2>
                         <div class="flex gap-2 mb-4">
-                            <input type="text" id="search-input" placeholder="พิมพ์ทะเบียนรถ หรือ เบอร์โทร" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                            <input type="text" id="search-input" autocomplete="off" placeholder="พิมพ์ทะเบียนรถ หรือ เบอร์โทร" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
                             <button onclick="searchQueue()" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-sm font-semibold">ค้นหา</button>
                         </div>
 
@@ -220,11 +220,11 @@
             <form onsubmit="handleLogin(event)" class="space-y-4">
                 <div>
                     <label class="block text-xs font-semibold text-slate-400 mb-1">ID</label>
-                    <input type="text" id="login-id" placeholder="กรอก ID" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                    <input type="text" id="login-id" autocomplete="off" placeholder="กรอก ID" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-400 mb-1">Password</label>
-                    <input type="password" id="login-pass" placeholder="กรอก Password" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                    <input type="password" id="login-pass" autocomplete="off" placeholder="กรอก Password" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
                 </div>
                 <div id="login-error" class="hidden text-xs text-red-400 bg-red-500/10 p-2 rounded-lg border border-red-500/20">
                     ID หรือ Password ไม่ถูกต้อง!
@@ -354,24 +354,43 @@
             `).join('');
         }
 
-        // Mutual Exclusion Rule: If "ล้างทั้งคัน" (ID: 4) selected -> Disable others
+        // Mutual Exclusion Logic (ล้างทั้งคัน vs บริการย่อย)
         function handleServiceChange(element) {
-            const isAllWash = parseInt(element.value) === 4;
+            const services = getServices();
+            const allWashService = services.find(s => s.name.trim() === 'ล้างทั้งคัน') || { id: 4 };
+            const allWashId = allWashService.id;
+
+            const isAllWash = parseInt(element.value) === allWashId;
             const checkboxes = document.querySelectorAll('.service-checkbox');
+            const allWashCb = Array.from(checkboxes).find(cb => parseInt(cb.value) === allWashId);
 
             if (isAllWash && element.checked) {
+                // เลือก "ล้างทั้งคัน" -> ยกเลิกและปิดการเลือกรายการอื่นทั้งหมด
                 checkboxes.forEach(cb => {
-                    if (parseInt(cb.value) !== 4) {
+                    if (parseInt(cb.value) !== allWashId) {
                         cb.checked = false;
                         cb.disabled = true;
-                        document.getElementById(`service-label-${cb.value}`).classList.add('opacity-40', 'cursor-not-allowed');
+                        document.getElementById(`service-label-${cb.value}`)?.classList.add('opacity-40', 'cursor-not-allowed');
                     }
                 });
             } else if (isAllWash && !element.checked) {
+                // ยกเลิก "ล้างทั้งคัน" -> ปลดล็อกรายการอื่นทั้งหมด
                 checkboxes.forEach(cb => {
                     cb.disabled = false;
-                    document.getElementById(`service-label-${cb.value}`).classList.remove('opacity-40', 'cursor-not-allowed');
+                    document.getElementById(`service-label-${cb.value}`)?.classList.remove('opacity-40', 'cursor-not-allowed');
                 });
+            } else {
+                // เลือก/ยกเลิก บริการย่อยอื่น ๆ
+                const anyOtherChecked = Array.from(checkboxes).some(cb => parseInt(cb.value) !== allWashId && cb.checked);
+                if (allWashCb) {
+                    if (anyOtherChecked) {
+                        allWashCb.disabled = true;
+                        document.getElementById(`service-label-${allWashId}`)?.classList.add('opacity-40', 'cursor-not-allowed');
+                    } else {
+                        allWashCb.disabled = false;
+                        document.getElementById(`service-label-${allWashId}`)?.classList.remove('opacity-40', 'cursor-not-allowed');
+                    }
+                }
             }
         }
 
